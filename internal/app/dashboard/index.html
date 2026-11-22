@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CassFr</title>
+<style>
+:root { color-scheme: light dark; }
+body {
+  font: 15px/1.5 system-ui, sans-serif;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px;
+}
+h1 { font-size: 22px; margin: 0; }
+h2 { font-size: 16px; margin: 24px 0 8px; }
+.top { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.tag { font-size: 12px; opacity: .7; margin: 4px 0 12px; }
+nav { display: flex; gap: 8px; margin: 12px 0; border-bottom: 1px solid #8884; padding-bottom: 8px; }
+nav button { font: inherit; padding: 4px 12px; cursor: pointer; }
+nav button[aria-current="true"] { font-weight: bold; text-decoration: underline; }
+progress { width: 100%; height: 18px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid #8883; font-variant-numeric: tabular-nums; }
+.big { font-size: 34px; font-weight: bold; }
+.muted { opacity: .7; }
+pre#log { height: 280px; overflow: auto; border: 1px solid #8886; padding: 8px; margin: 0; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+.error { color: #d33; }
+.success { color: #2a8a3a; }
+.warn { color: #b8860b; }
+.info { color: #3a6fc0; }
+fieldset { margin: 0 0 12px; border: 1px solid #8886; }
+label { display: block; margin: 4px 0; }
+label.num { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+input[type=number] { width: 90px; font: inherit; }
+button { font: inherit; }
+#msg { margin-left: 8px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>CassFr</h1>
+  <span id="state" class="muted">connecting...</span>
+</div>
+<div class="tag">This UI was vibecoded, I'm not a web designer.</div>
+
+<nav>
+  <button id="tabProgress" aria-current="true">Progress</button>
+  <button id="tabSettings" aria-current="false">Settings</button>
+</nav>
+
+<section id="viewProgress">
+  <div class="big"><span id="pct">0</span>%</div>
+  <div class="muted" id="sub">Waiting for the plugin</div>
+  <progress id="overall" max="100" value="0"></progress>
+  <p id="note" class="muted"></p>
+
+  <table>
+    <tr><th>Reuploaded</th><td id="sReup">0</td><th>Elapsed</th><td id="sElapsed">0s</td></tr>
+    <tr><th>Skipped / failed</th><td id="sSkip">0</td><th>Time left (estimate)</th><td id="sEta">-</td></tr>
+    <tr><th>Already done (saved)</th><td id="sResumed">0</td><th>Ids</th><td id="sIds">0 / 0</td></tr>
+    <tr><th>Upload speed now</th><td id="sRate">-</td><th>Roblox said slow down</th><td id="sLimits">0</td></tr>
+  </table>
+
+  <h2>Chunks</h2>
+  <table id="chunks"></table>
+
+  <h2>Log <label style="display:inline;font-size:13px;margin-left:8px"><input type="checkbox" id="errorsOnly"> errors only</label></h2>
+  <pre id="log">Nothing yet.</pre>
+</section>
+
+<section id="viewSettings" hidden>
+  <form id="form">
+    <fieldset>
+      <legend>Speed</legend>
+      <label><input type="radio" name="preset" value="gentle"> <b>Gentle</b> - slower, fewest rate limits</label>
+      <label><input type="radio" name="preset" value="balanced"> <b>Balanced</b> - default, speeds up on its own</label>
+      <label><input type="radio" name="preset" value="turbo"> <b>Turbo</b> - as fast as Roblox lets it, expect more rate limits</label>
+      <label><input type="radio" name="preset" value="custom"> <b>Custom</b> - set the numbers yourself</label>
+      <details>
+        <summary>Numbers</summary>
+        <label class="num">Asset info requests per minute, start <input type="number" id="infoRateStart" min="10" max="20000"></label>
+        <label class="num">Asset info requests per minute, max <input type="number" id="infoRateMax" min="10" max="20000"></label>
+        <label class="num">Animation uploads per minute, start <input type="number" id="animationRateStart" min="10" max="20000"></label>
+        <label class="num">Animation uploads per minute, max <input type="number" id="animationRateMax" min="10" max="20000"></label>
+        <label class="num">Uploads in flight at once <input type="number" id="animationConcurrency" min="1" max="500"></label>
+        <label class="num">Batches of 50 ids at once <input type="number" id="animationParallelBatch" min="1" max="64"></label>
+        <div class="muted">It always starts at "start" and speeds up toward "max" until Roblox says slow down.</div>
+      </details>
+    </fieldset>
+
+    <fieldset>
+      <legend>Studio</legend>
+      <label class="num">Apply new ids in Studio
+        <select id="pollMs">
+          <option value="1000">Normal (checks every 1s)</option>
+          <option value="500">Fast (every 0.5s)</option>
+          <option value="250">Instant (every 0.25s)</option>
+        </select>
+      </label>
+      <div class="muted">New ids are written into your place while the rest is still uploading. Faster just checks more often. Read when a reupload starts.</div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Other</legend>
+      <label><input type="checkbox" id="resumeProgress"> Remember finished ids and skip them next time (not used for sounds)</label>
+      <label><input type="checkbox" id="openDashboard"> Open this page automatically</label>
+      <div>Saved ids: <b id="savedCount">0</b> <button type="button" id="clearSaved">Clear saved progress</button></div>
+    </fieldset>
+
+    <button type="submit">Save</button><span id="msg"></span>
+    <p class="muted">Saved to config.ini. Changes apply from the next reupload.</p>
+  </form>
+</section>
+
+<div class="tag">CassFr is free and open source (GPL-3.0). Forked from BacFr.</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var data = null, fetchedAt = 0, presets = {};
+  var numberFields = ["infoRateStart", "infoRateMax", "animationRateStart", "animationRateMax", "animationConcurrency", "animationParallelBatch"];
+  var settingsLoaded = false;
+
+  function num(n) { return Number(n || 0).toLocaleString(); }
+
+  function dur(ms) {
+    if (!isFinite(ms) || ms < 0) return "-";
+    var s = Math.round(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    if (h > 0) return h + "h " + m + "m";
+    if (m > 0) return m + "m " + (s % 60) + "s";
+    return s + "s";
+  }
+
+  function clock(ms) {
+    var d = new Date(ms), p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+
+  function showTab(name) {
+    $("viewProgress").hidden = name !== "progress";
+    $("viewSettings").hidden = name !== "settings";
+    $("tabProgress").setAttribute("aria-current", String(name === "progress"));
+    $("tabSettings").setAttribute("aria-current", String(name === "settings"));
+    if (name === "settings" && !settingsLoaded) loadSettings();
+  }
+
+  function render() {
+    var d = data;
+    if (!d) return;
+    var total = d.totalIds || 0;
+    var done = Math.min(d.doneIds || 0, total || d.doneIds || 0);
+    var pct = total > 0 ? Math.floor(done / total * 100) : 0;
+    if (d.state === "finished") pct = 100;
+
+    $("pct").textContent = pct;
+    $("overall").value = pct;
+    $("state").textContent = { idle: "Idle", running: "Reuploading", waiting: "Next chunk", finished: "Finished", error: "Error" }[d.state] || d.state;
+
+    var sub = "Waiting for the plugin";
+    if (d.state === "running" || d.state === "waiting") sub = d.assetType + ", chunk " + d.chunkIndex + " of " + d.chunkCount;
+    if (d.state === "finished") sub = d.assetType + ", all " + d.chunkCount + " chunk(s) done";
+    if (d.state === "error") sub = "Stopped";
+    $("sub").textContent = sub;
+
+    var note = "";
+    if (d.state === "running") note = "Uploading as fast as it can. The next chunk starts by itself.";
+    if (d.state === "waiting") note = "Chunk finished. Sending the next one...";
+    if (d.state === "finished") note = "All done. You can start another reupload without restarting.";
+    if (d.state === "error") note = d.message || "Something went wrong. Check the console window.";
+    $("note").textContent = note;
+
+    var resumed = d.resumed || 0;
+    $("sReup").textContent = num(d.reuploaded);
+    $("sResumed").textContent = num(resumed);
+    $("sSkip").textContent = num(Math.max(0, done - (d.reuploaded || 0) - resumed));
+    $("sIds").textContent = num(done) + " / " + num(total);
+    $("sRate").textContent = d.uploadRate ? num(d.uploadRate) + " per min" : "-";
+    $("sLimits").textContent = num(d.rateLimits) + " times";
+    clockTick();
+
+    document.title = (d.state === "running" || d.state === "waiting") ? pct + "% - CassFr" : "CassFr";
+
+    var table = $("chunks");
+    table.textContent = "";
+    var head = table.insertRow();
+    ["Chunk", "Ids", "Done", "Reuploaded", ""].forEach(function (t) {
+      var th = document.createElement("th"); th.textContent = t; head.appendChild(th);
+    });
+    (d.chunks || []).forEach(function (c) {
+      var row = table.insertRow();
+      row.insertCell().textContent = c.index;
+      row.insertCell().textContent = num(c.ids);
+      row.insertCell().textContent = num(c.processed);
+      row.insertCell().textContent = num(c.reuploaded);
+      row.insertCell().textContent = c.state === "done" ? "done" : c.state === "running" ? "running" : "waiting";
+    });
+    if (!(d.chunks || []).length) {
+      var r = table.insertRow(); var cell = r.insertCell(); cell.colSpan = 5; cell.className = "muted"; cell.textContent = "No reupload running yet.";
+    }
+
+    renderLog(d.logs || []);
+  }
+
+  function clockTick() {
+    var d = data; if (!d) return;
+    var live = d.state === "running" || d.state === "waiting";
+    var elapsed = d.elapsedMs + (live ? Date.now() - fetchedAt : 0);
+    $("sElapsed").textContent = d.startedAt ? dur(elapsed) : "0s";
+    var total = d.totalIds || 0, done = d.doneIds || 0, eta = "-";
+    if (live && done > 0 && total > done && elapsed > 3000) eta = "~" + dur((total - done) / done * elapsed);
+    if (d.state === "finished") eta = "0s";
+    $("sEta").textContent = eta;
+  }
+
+  var logKey = "";
+  function renderLog(logs) {
+    var only = $("errorsOnly").checked;
+    var shown = only ? logs.filter(function (l) { return l.level === "error"; }) : logs;
+    var last = shown.length ? shown[shown.length - 1] : null;
+    var key = only + ":" + shown.length + ":" + (last ? last.t + last.msg : "");
+    if (key === logKey) return;
+    logKey = key;
+
+    var box = $("log");
+    var stick = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.textContent = "";
+    if (!shown.length) { box.textContent = only ? "No errors." : "Nothing yet."; return; }
+    shown.forEach(function (l) {
+      var line = document.createElement("div");
+      line.className = l.level;
+      line.textContent = clock(l.t) + "  " + l.msg;
+      box.appendChild(line);
+    });
+    if (stick) box.scrollTop = box.scrollHeight;
+  }
+
+  function poll() {
+    fetch("/status", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (s) { data = s; fetchedAt = Date.now(); render(); })
+      .catch(function () { $("state").textContent = "can't reach CassFr (is the exe running?)"; })
+      .then(function () { setTimeout(poll, 600); });
+  }
+
+  function fillSettings(res) {
+    var s = res.settings;
+    presets = res.presets || presets;
+    document.querySelectorAll("input[name=preset]").forEach(function (r) { r.checked = r.value === s.preset; });
+    numberFields.forEach(function (k) { $(k).value = s[k]; });
+    $("pollMs").value = String(s.pollMs);
+    $("resumeProgress").checked = !!s.resumeProgress;
+    $("openDashboard").checked = !!s.openDashboard;
+    $("savedCount").textContent = num(res.savedCount);
+    lockNumbers();
+  }
+
+  function selectedPreset() {
+    var r = document.querySelector("input[name=preset]:checked");
+    return r ? r.value : "custom";
+  }
+
+  function lockNumbers() {
+    var custom = selectedPreset() === "custom";
+    numberFields.forEach(function (k) { $(k).disabled = !custom; });
+  }
+
+  function loadSettings() {
+    fetch("/settings", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) { settingsLoaded = true; fillSettings(res); })
+      .catch(function () { $("msg").textContent = "Could not load settings."; });
+  }
+
+  function say(text, bad) {
+    var m = $("msg"); m.textContent = text; m.className = bad ? "error" : "success";
+  }
+
+  function post(url, body) {
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CassFr": "1" },
+      body: JSON.stringify(body || {})
+    }).then(function (r) {
+      return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "failed"); return j; });
+    });
+  }
+
+  document.querySelectorAll("input[name=preset]").forEach(function (r) {
+    r.addEventListener("change", function () {
+      var p = presets[r.value];
+      if (p) numberFields.forEach(function (k) { $(k).value = p[k]; });
+      lockNumbers();
+    });
+  });
+
+  $("form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var body = {
+      preset: selectedPreset(),
+      pollMs: Number($("pollMs").value),
+      resumeProgress: $("resumeProgress").checked,
+      openDashboard: $("openDashboard").checked
+    };
+    numberFields.forEach(function (k) { body[k] = Number($(k).value); });
+    post("/settings", body)
+      .then(function (res) { fillSettings(res); say("Saved."); })
+      .catch(function (err) { say(err.message, true); });
+  });
+
+  $("clearSaved").addEventListener("click", function () {
+    if (!confirm("Forget every saved id? Next run will upload them again.")) return;
+    post("/settings/clear-progress")
+      .then(function (r) { $("savedCount").textContent = "0"; say("Cleared " + num(r.removed) + " saved ids."); })
+      .catch(function (err) { say(err.message, true); });
+  });
+
+  $("tabProgress").addEventListener("click", function () { showTab("progress"); });
+  $("tabSettings").addEventListener("click", function () { showTab("settings"); });
+  $("errorsOnly").addEventListener("change", function () { logKey = ""; render(); });
+
+  setInterval(clockTick, 1000);
+  poll();
+})();
+</script>
+</body>
+</html>
